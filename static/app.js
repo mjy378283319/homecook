@@ -28,7 +28,7 @@ async function api(method, path, body) {
     opts.headers["Content-Type"] = "application/json";
     opts.body = JSON.stringify(body);
   }
-  const res = await fetch("/api" + path, opts);
+  const res = await fetch(path, opts);
   let data = null;
   try { data = await res.json(); } catch (e) {}
   if (res.status === 401) {
@@ -174,7 +174,7 @@ async function openRecipeDetail(id) {
     <h3>${esc(r.title)}</h3>
     <div class="meta" style="margin-bottom:8px">
       <span class="tag">${esc(r.cuisine)}</span><span class="tag">${esc(r.method)}</span><span class="tag">${esc(r.difficulty)}</span>
-      准备 ${r.prep_time} + 烹饪 ${r.cook_time} 分钟 · ${r.servings} 人份
+      ${r.prep_time ? `准备 ${r.prep_time} 分钟 · ` : ""}烹饪 ${r.cook_time} 分钟 · ${r.servings} 人份
       ${r.taste_tags ? `· 口味 ${esc(r.taste_tags)}` : ""}
     </div>
     <h4>食材</h4>
@@ -555,12 +555,21 @@ document.addEventListener("click", (e) => {
 
 // ---------- 标签切换 ----------
 const TAB_VIEWS = { recipes: viewRecipes, ingredients: viewIngredients, shopping: viewShopping, mealplan: viewMealPlan, import: viewImport, settings: viewSettings };
-function switchTab(name) {
+function switchTab(name, syncHash = true) {
+  if (!TAB_VIEWS[name]) name = "recipes";
   state.currentTab = name;
   $$("#tabs button").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
-  (TAB_VIEWS[name] || viewRecipes)();
+  if (syncHash && location.hash !== "#" + name) {
+    try { history.replaceState(null, "", "#" + name); } catch (e) { location.hash = name; }
+  }
+  return (TAB_VIEWS[name] || viewRecipes)();
 }
 $("#tabs").addEventListener("click", (e) => { const b = e.target.closest("button[data-tab]"); if (b) switchTab(b.dataset.tab); });
+// 支持直接访问 /#shopping 这类深链（可收藏、可从 Unraid WebUI 直达）
+window.addEventListener("hashchange", () => {
+  const name = location.hash.replace(/^#/, "");
+  if (TAB_VIEWS[name] && name !== state.currentTab) switchTab(name, false);
+});
 
 function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 
@@ -572,5 +581,7 @@ function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTi
   } catch (e) { state.user = null; }
   try { state.options = await api("GET", "/api/meta/options"); } catch (e) { state.options = {}; }
   renderUser();
-  await viewRecipes();
+  const initial = location.hash.replace(/^#/, "");
+  if (TAB_VIEWS[initial]) await switchTab(initial, false);
+  else await viewRecipes();
 })();

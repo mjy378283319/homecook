@@ -3,6 +3,7 @@ import os
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 
 from app.db import SessionLocal, init_db
 from app.routers import router
@@ -26,6 +27,20 @@ def _startup():
         ensure_default_user(db)
     finally:
         db.close()
+
+
+@app.get("/healthz")
+def healthz():
+    """容器健康检查：不查鉴权、不碰业务表，只确认进程与数据库句柄可用。"""
+    try:
+        db = SessionLocal()
+        try:
+            db.execute(text("SELECT 1"))
+        finally:
+            db.close()
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse(status_code=503, content={"status": "error", "detail": str(exc)})
+    return {"status": "ok", "version": app.version}
 
 
 @app.get("/favicon.ico")
