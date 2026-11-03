@@ -1,0 +1,19 @@
+services:
+  homecook:
+    build: .
+    image: homecook:latest
+    container_name: homecook
+    ports:
+      - "9926:8000"
+    environment:
+      - WEB_USER=admin
+      - WEB_PASSWORD=changeme
+      - SECRET_KEY=please-change-to-a-random-string
+      - TZ=Asia/Shanghai
+      - DB_PATH=/data/homecook.db
+    volumes:
+      - homecook-data:/data
+    restart: unless-stopped
+
+volumes:
+  homecook-data:

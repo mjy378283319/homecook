@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>家常菜单 HomeCook</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">🥘 家常菜单 <span class="sub">HomeCook</span></div>
+    <div class="userbox" id="userbox"></div>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button data-tab="recipes" class="active">菜谱</button>
+    <button data-tab="ingredients">食材库</button>
+    <button data-tab="shopping">采购清单</button>
+    <button data-tab="mealplan">周菜单</button>
+    <button data-tab="import">导入</button>
+    <button data-tab="settings">设置</button>
+  </nav>
+
+  <main id="view" class="view"></main>
+
+  <div id="modal" class="modal hidden">
+    <div class="modal-box">
+      <button class="modal-close" id="modalClose">✕</button>
+      <div id="modalContent"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
