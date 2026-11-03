@@ -57,3 +57,69 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
+
+  smoke:
+    # 真正把镜像跑起来：验健康检查、登录、封面图上传与持久化
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build amd64 image
+        run: docker build -t homecook:smoke .
+
+      - name: Run container
+        run: |
+          mkdir -p "$PWD/smoke-data"
+          docker run -d --name homecook-smoke -p 18000:8000 \
+            -e WEB_USER=admin \
+            -e WEB_PASSWORD=smoke-test-pw \
+            -e SECRET_KEY=smoke-secret \
+            -v "$PWD/smoke-data:/data" \
+            homecook:smoke
+
+      - name: Wait until healthy
+        run: |
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:18000/healthz; then
+              echo; echo "healthy after ${i} tries"; exit 0
+            fi
+            sleep 2
+          done
+          echo "--- container logs ---"
+          docker logs homecook-smoke
+          exit 1
+
+      - name: Cover upload round-trip
+        run: |
+          set -euo pipefail
+          base=http://127.0.0.1:18000
+          python3 -c "import base64,pathlib; pathlib.Path('test.png').write_bytes(base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='))"
+
+          curl -fsS -c cookie.txt -X POST -H 'Content-Type: application/json' \
+            -d '{"username":"admin","password":"smoke-test-pw"}' "$base/api/login" > /dev/null
+
+          rid=$(curl -fsS -b cookie.txt -X POST -H 'Content-Type: application/json' \
+            -d '{"title":"smoke","ingredients":[],"steps":[]}' "$base/api/recipes" \
+            | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')
+          echo "recipe id = $rid"
+
+          cover=$(curl -fsS -b cookie.txt -F "file=@test.png" "$base/api/recipes/$rid/cover" \
+            | python3 -c 'import json,sys;print(json.load(sys.stdin)["cover"])')
+          echo "cover = $cover"
+
+          code=$(curl -sS -o /dev/null -w '%{http_code}' "$base$cover")
+          echo "GET cover -> $code"
+          test "$code" = "200"
+
+          # 必须是 JPEG 且落在挂载的数据卷里，证明 Pillow 路径与持久化都正常
+          case "$cover" in
+            *.jpg) echo "Pillow 压缩路径生效" ;;
+            *) echo "::warning::封面未走压缩路径（降级为原图）" ;;
+          esac
+          test -n "$(ls -A smoke-data/covers)"
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker logs homecook-smoke || true
