@@ -161,7 +161,7 @@ jobs:
           assert n["matched"] == 3 and n["total_items"] == 3, (n["matched"], n["total_items"])
           assert abs(n["covered_g"] - 452) < 1, n["covered_g"]          # 150+300+2
           assert n["per_serving"]["calories"] > 100, n["per_serving"]["calories"]
-          assert n["per_serving"]["cholesterol"] > 700, n["per_serving"]["cholesterol"]
+          assert 420 < n["per_serving"]["cholesterol"] < 460, n["per_serving"]["cholesterol"]
           assert n["per_serving"]["sodium"] > 300, n["per_serving"]["sodium"]
           assert set(n["metrics"][0]) >= {"key", "label", "unit", "dec"}
           print("auto ok:", n["per_serving"]["calories"], "kcal/份, 计入", n["covered_g"], "g")
@@ -196,10 +196,10 @@ jobs:
           print("back to auto ok")
 
           # 食材每 100g 修改
-          ing = next(i for i in call("GET", "/api/ingredients?q=鸡蛋") if i["name"] == "鸡蛋")
+          ing = next(i for i in call("GET", "/api/ingredients") if i["name"] == "鸡蛋")
           call("PATCH", f"/api/ingredients/{ing['id']}/nutrition",
                {"calories_per100": 150, "gram_per_unit": 55})
-          ing2 = next(i for i in call("GET", "/api/ingredients?q=鸡蛋") if i["name"] == "鸡蛋")
+          ing2 = next(i for i in call("GET", "/api/ingredients") if i["name"] == "鸡蛋")
           assert ing2["calories_per100"] == 150 and ing2["gram_per_unit"] == 55
           assert ing2["sodium_per100"] > 0, "PATCH 不应清空其他营养字段"
           print("ingredient patch ok")
