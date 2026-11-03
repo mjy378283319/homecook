@@ -120,6 +120,94 @@ jobs:
           esac
           test -n "$(ls -A smoke-data/covers)"
 
+      - name: Nutrition round-trip
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.request, http.cookiejar
+
+          base = "http://127.0.0.1:18000"
+          jar = http.cookiejar.CookieJar()
+          op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+
+          def call(method, path, body=None):
+              data = json.dumps(body).encode() if body is not None else None
+              req = urllib.request.Request(base + path, data=data, method=method,
+                                           headers={"Content-Type": "application/json"})
+              with op.open(req, timeout=20) as r:
+                  return json.loads(r.read().decode())
+
+          call("POST", "/api/login", {"username": "admin", "password": "smoke-test-pw"})
+
+          # 指标顺序必须固定
+          want = ["卡路里", "碳水化合物", "胆固醇", "脂肪", "纤维", "蛋白质",
+                  "饱和脂肪", "钠", "糖", "反式脂肪", "不饱和脂肪"]
+          got = [m["label"] for m in call("GET", "/api/meta/options")["nutrition"]]
+          assert got == want, f"metric order mismatch: {got}"
+
+          # 自动估算：鸡蛋 3 个（50g/个）+ 西红柿 2 个（150g/个）+ 盐 2g
+          rec = call("POST", "/api/recipes", {
+              "title": "smoke-nutrition", "servings": 2,
+              "ingredients": [
+                  {"name": "鸡蛋", "quantity": 3, "unit": "个"},
+                  {"name": "西红柿", "quantity": 2, "unit": "个"},
+                  {"name": "盐", "quantity": 2, "unit": "克"},
+              ],
+              "steps": [{"step_no": 1, "text": "smoke"}],
+          })
+          rid = rec["id"]
+          n = rec["nutrition"]
+          assert n["mode"] == "auto", n["mode"]
+          assert n["matched"] == 3 and n["total_items"] == 3, (n["matched"], n["total_items"])
+          assert abs(n["covered_g"] - 452) < 1, n["covered_g"]          # 150+300+2
+          assert n["per_serving"]["calories"] > 100, n["per_serving"]["calories"]
+          assert n["per_serving"]["cholesterol"] > 700, n["per_serving"]["cholesterol"]
+          assert n["per_serving"]["sodium"] > 300, n["per_serving"]["sodium"]
+          assert set(n["metrics"][0]) >= {"key", "label", "unit", "dec"}
+          print("auto ok:", n["per_serving"]["calories"], "kcal/份, 计入", n["covered_g"], "g")
+
+          # 改人份 → 每份重算
+          total = n["total"]["calories"]
+          rec2 = call("PUT", f"/api/recipes/{rid}", {
+              "title": "smoke-nutrition", "servings": 4,
+              "ingredients": [
+                  {"name": "鸡蛋", "quantity": 3, "unit": "个"},
+                  {"name": "西红柿", "quantity": 2, "unit": "个"},
+                  {"name": "盐", "quantity": 2, "unit": "克"},
+              ],
+              "steps": [{"step_no": 1, "text": "smoke"}],
+          })
+          assert abs(rec2["nutrition"]["total"]["calories"] - total) < 1, "总量应与人份无关"
+          assert abs(rec2["nutrition"]["per_serving"]["calories"] - total / 4) < 1, "每份应随人份变化"
+          print("servings ok:", rec2["nutrition"]["per_serving"]["calories"], "kcal/份")
+
+          # 手动覆盖 → 每份 = 全锅 ÷ 人份
+          rec3 = call("PUT", f"/api/recipes/{rid}/nutrition",
+                      {"mode": "manual", "values": {"calories": 800, "protein": 40}})
+          n3 = rec3["nutrition"]
+          assert n3["mode"] == "manual" and n3["total"]["calories"] == 800
+          assert n3["per_serving"]["calories"] == 200 and n3["per_serving"]["protein"] == 10
+          print("manual ok: 全锅 800 → 每份", n3["per_serving"]["calories"])
+
+          # 切回自动 → 重新估算
+          rec4 = call("PUT", f"/api/recipes/{rid}/nutrition", {"mode": "auto"})
+          assert rec4["nutrition"]["mode"] == "auto"
+          assert abs(rec4["nutrition"]["total"]["calories"] - total) < 1
+          print("back to auto ok")
+
+          # 食材每 100g 修改
+          ing = next(i for i in call("GET", "/api/ingredients?q=鸡蛋") if i["name"] == "鸡蛋")
+          call("PATCH", f"/api/ingredients/{ing['id']}/nutrition",
+               {"calories_per100": 150, "gram_per_unit": 55})
+          ing2 = next(i for i in call("GET", "/api/ingredients?q=鸡蛋") if i["name"] == "鸡蛋")
+          assert ing2["calories_per100"] == 150 and ing2["gram_per_unit"] == 55
+          assert ing2["sodium_per100"] > 0, "PATCH 不应清空其他营养字段"
+          print("ingredient patch ok")
+
+          call("DELETE", f"/api/recipes/{rid}")
+          print("nutrition smoke passed")
+          PY
+
       - name: Dump logs on failure
         if: failure()
         run: docker logs homecook-smoke || true

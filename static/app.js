@@ -112,6 +112,49 @@ function closeModal() { $("#modal").classList.add("hidden"); $("#modalContent").
 $("#modalClose").addEventListener("click", closeModal);
 $("#modal").addEventListener("click", (e) => { if (e.target.id === "modal") closeModal(); });
 
+// ---------- 营养 ----------
+function nutNum(v, dec) {
+  const n = Number(v || 0);
+  if (!dec) return String(Math.round(n));
+  return n.toFixed(dec).replace(/\.0+$/, "");
+}
+
+function nutRowsHtml(n, view) {
+  const src = n[view] || {};
+  return (n.metrics || []).map((m) =>
+    `<div class="nut-row"><span>${m.label}</span><span class="nut-val"><b>${nutNum(src[m.key], m.dec)}</b> <small>${m.unit}</small></span></div>`
+  ).join("");
+}
+
+function nutHeadHtml(n, view) {
+  const on = (v) => (view === v ? " active" : "");
+  const how = n.mode === "manual" ? "手动填写（全锅总量）" : "按食材库每 100g 自动估算";
+  const cov = n.mode === "manual"
+    ? "每份 = 全锅总量 ÷ 人份"
+    : `已计入 ${nutNum(n.covered_g, 0)}g · ${n.matched}/${n.total_items} 项食材`;
+  const miss = (n.unmatched && n.unmatched.length)
+    ? `<div class="nut-note warn">未计入：${esc(n.unmatched.join("、"))}</div>` : "";
+  return `<div class="nut-head">
+      <b>营养</b>
+      <span class="seg">
+        <button class="seg-btn${on("per_serving")}" data-action="nut-view" data-v="per_serving">每份</button>
+        <button class="seg-btn${on("total")}" data-action="nut-view" data-v="total">全锅</button>
+      </span>
+    </div>
+    <div class="nut-note">${how} · ${cov} · ${n.servings} 人份</div>${miss}
+    <div id="nutBody">${nutRowsHtml(n, view)}</div>`;
+}
+
+function nutritionCard(n) {
+  if (!n || !n.has_data) {
+    return `<div class="nut-card"><div class="nut-head"><b>营养</b></div>
+      <div class="nut-note">暂无数据：给食材库填「每 100g 营养」后自动估算，或在编辑页手动填写。</div></div>`;
+  }
+  state._nut = n;
+  state._nutView = "per_serving";
+  return `<div class="nut-card" id="nutCard">${nutHeadHtml(n, "per_serving")}</div>`;
+}
+
 // ---------- 菜谱 ----------
 async function loadRecipes() { state.recipes = await api("GET", "/api/recipes"); }
 
@@ -127,6 +170,7 @@ function recipeCard(r) {
           <span class="tag">${esc(r.method)}</span>
           <span class="tag">${esc(r.difficulty)}</span>
           约 ${r.prep_time + r.cook_time} 分钟 · ${r.servings} 人份
+        ${r.nutrition && r.nutrition.has_data ? ` · 每份 ${nutNum(r.nutrition.per_serving.calories, 0)} kcal` : ""}
         </div>
       </div>
     </div>
@@ -207,6 +251,7 @@ async function openRecipeDetail(id) {
     </div>
     <h4>食材</h4>
     <table><thead><tr><th>食材</th><th>用量</th><th>备注</th></tr></thead><tbody>${ings || '<tr><td colspan="3" class="muted">无</td></tr>'}</tbody></table>
+    ${nutritionCard(r.nutrition)}
     <h4>步骤</h4>${steps || '<p class="muted">无</p>'}
     ${r.tips ? `<hr><div class="tip">💡 小贴士：${esc(r.tips)}</div>` : ""}
     ${r.source_url ? `<p class="muted">来源：${esc(r.source_name || "")} <a href="${esc(r.source_url)}" target="_blank">链接</a></p>` : ""}
@@ -278,6 +323,16 @@ async function openRecipeForm(id, prefill) {
     <div id="ingList">${r.ingredients.map((i, n) => ingRowHtml(i, n)).join("")}</div>
     <button class="btn ghost sm" data-action="ing-row-add">+ 添加食材</button>
     <hr>
+    <h4>营养</h4>
+    <div class="row">
+      <select id="f_nut_mode">
+        <option value="auto">自动估算（按食材库）</option>
+        <option value="manual">手动填写（全锅总量）</option>
+      </select>
+      <span id="nutHint" class="muted"></span>
+    </div>
+    <div id="nutManual" class="nut-edit">${nutFormInputs(r)}</div>
+    <hr>
     <h4>步骤（每行一步）</h4>
     <textarea id="f_steps" rows="8" placeholder="第一步内容&#10;第二步内容">${r.steps.map((s) => s.text).join("\n")}</textarea>
     <hr>
@@ -298,6 +353,20 @@ async function openRecipeForm(id, prefill) {
   $("#f_cover").addEventListener("input", (e) => {
     if (!state._pendingCover) renderCoverPreview(e.target.value.trim());
   });
+  const nutMode = $("#f_nut_mode");
+  if (nutMode) {
+    nutMode.value = (r.nutrition && r.nutrition.mode) || "auto";
+    const sync = () => {
+      const manual = nutMode.value === "manual";
+      $("#nutManual").classList.toggle("hidden", !manual);
+      const hint = $("#nutHint");
+      if (hint) hint.textContent = manual
+        ? "填全锅总量，每份按人份自动均分"
+        : "默认按「用量 × 食材每 100g 营养」累加，切换手动可覆盖";
+    };
+    nutMode.addEventListener("change", sync);
+    sync();
+  }
   showModal();
 }
 
@@ -344,6 +413,15 @@ async function saveRecipe(id, btn) {
         toast("菜谱已保存，但封面上传失败：" + err.message);
       }
     }
+    if (saved && saved.id && $("#f_nut_mode")) {
+      const mode = $("#f_nut_mode").value;
+      const values = {};
+      if (mode === "manual") {
+        $$("#nutManual input[data-k]").forEach((inp) => { values[inp.dataset.k] = parseFloat(inp.value) || 0; });
+      }
+      try { await api("PUT", `/api/recipes/${saved.id}/nutrition`, { mode, values }); }
+      catch (err) { toast("营养设置未保存：" + err.message); }
+    }
     toast("已保存");
     closeModal();
     await refreshRecipeList();
@@ -355,6 +433,12 @@ async function loadIngredients() {
   const [ings, cats] = await Promise.all([api("GET", "/api/ingredients"), api("GET", "/api/categories")]);
   state.ingredients = ings; state.categories = cats;
 }
+function ingHasNut(i) {
+  return ["calories", "carbohydrate", "cholesterol", "fat", "fiber", "protein",
+          "saturated_fat", "sodium", "sugar", "trans_fat", "unsaturated_fat"]
+    .some((k) => (i[k + "_per100"] || 0) > 0);
+}
+
 function catName(id) { const c = state.categories.find((x) => x.id === id); return c ? c.name : "未分类"; }
 
 async function viewIngredients() {
@@ -368,7 +452,7 @@ async function viewIngredients() {
     }).length;
     return `<div class="card" style="margin:0"><b>${c.icon || ""} ${esc(c.name)}</b> <span class="muted">(${count})</span>${subNames ? ` <span class="muted">· ${esc(subNames)}</span>` : ""}</div>`;
   }).join("");
-  const rows = state.ingredients.map((i) => `<tr><td>${esc(i.name)}</td><td>${esc(catName(i.category_id))}</td><td>${esc(i.default_unit)}</td><td class="muted">${esc(i.purchase_spec || "")}</td><td class="muted">${esc(i.channel || "")}</td>${state.user ? `<td><button class="btn ghost sm danger" data-action="ing-del" data-id="${i.id}">删</button></td>` : "<td></td>"}</tr>`).join("");
+  const rows = state.ingredients.map((i) => `<tr><td>${esc(i.name)}</td><td>${esc(catName(i.category_id))}</td><td>${esc(i.default_unit)}</td><td class="muted">${esc(i.purchase_spec || "")}</td><td class="muted">${esc(i.channel || "")}</td><td class="muted">${ingHasNut(i) ? Math.round(i.calories_per100) + " kcal" : "—"}</td>${state.user ? `<td class="nowrap"><button class="btn ghost sm" data-action="ing-edit" data-id="${i.id}">编辑</button> <button class="btn ghost sm danger" data-action="ing-del" data-id="${i.id}">删</button></td>` : "<td></td>"}</tr>`).join("");
   $("#view").innerHTML = `
     <div class="card"><h4>分类</h4>${tree || '<p class="muted">暂无</p>'}</div>
     ${state.user ? `<div class="card">
@@ -384,8 +468,48 @@ async function viewIngredients() {
       <span id="n_err" class="muted"></span>
     </div>` : ""}
     <div class="card"><h4>全部食材（${state.ingredients.length}）</h4>
-      <table><thead><tr><th>名称</th><th>分类</th><th>单位</th><th>规格</th><th>渠道</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="muted">暂无</td></tr>'}</tbody></table>
+      <table><thead><tr><th>名称</th><th>分类</th><th>单位</th><th>规格</th><th>渠道</th><th>每100g</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="7" class="muted">暂无</td></tr>'}</tbody></table>
     </div>`;
+}
+
+function nutFormInputs(r) {
+  const metrics = (state.options && state.options.nutrition) || [];
+  const total = (r.nutrition && r.nutrition.total) || {};
+  return metrics.map((m) => `<label class="nut-field"><span class="nut-label">${m.label}<small>${m.unit}</small></span>
+      <input data-k="${m.key}" type="number" step="${m.dec ? "0.1" : "1"}" value="${total[m.key] != null ? total[m.key] : 0}" /></label>`).join("");
+}
+
+function openIngredientEdit(id) {
+  const i = state.ingredients.find((x) => x.id === id);
+  if (!i) return;
+  const metrics = (state.options && state.options.nutrition) || [];
+  const fields = metrics.map((m) => `<label class="nut-field"><span class="nut-label">${m.label}<small>${m.unit}/100g</small></span>
+      <input data-k="${m.key}" type="number" step="${m.dec ? "0.1" : "1"}" value="${i[m.key + "_per100"] || 0}" /></label>`).join("");
+  $("#modalContent").innerHTML = `
+    <h3>编辑食材：${esc(i.name)}</h3>
+    <div class="grid">
+      <input id="i_name" value="${esc(i.name)}" placeholder="食材名" />
+      <div class="row">
+        <select id="i_cat"><option value="">未分类</option>${state.categories.map((c) => `<option value="${c.id}" ${c.id === i.category_id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select>
+        <input id="i_unit" value="${esc(i.default_unit || "克")}" placeholder="默认单位" />
+      </div>
+      <div class="row">
+        <input id="i_spec" value="${esc(i.purchase_spec || "")}" placeholder="采购规格" />
+        <input id="i_ch" value="${esc(i.channel || "")}" placeholder="常用渠道" />
+      </div>
+      <div class="row">
+        <label>每个/根约 <input id="i_gpu" type="number" step="1" value="${i.gram_per_unit || 0}" style="width:88px" /> 克</label>
+        <span class="muted">用于「3 个鸡蛋」「2 根葱」这类计数单位折算克重</span>
+      </div>
+      <h4 style="margin:6px 0 0">每 100g 可食部营养</h4>
+      <div class="nut-edit-row">${fields}</div>
+      <span class="muted">数据参考《中国食物成分表》，留 0 表示未知（该项不计入估算）</span>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn" data-action="ing-save" data-id="${i.id}">保存</button>
+      <span id="i_err" class="muted"></span>
+    </div>`;
+  showModal();
 }
 
 // ---------- 采购清单 ----------
@@ -535,6 +659,37 @@ document.addEventListener("click", async (e) => {
   try {
     if (a === "openLogin") return openLogin();
     if (a === "logout") { await api("POST", "/api/logout"); state.user = null; renderUser(); toast("已退出"); if (state.currentTab !== "recipes") switchTab("recipes"); else await viewRecipes(); return; }
+    if (a === "nut-view") {
+      if (!state._nut) return;
+      state._nutView = t.dataset.v;
+      const card = $("#nutCard");
+      if (card) card.innerHTML = nutHeadHtml(state._nut, state._nutView);
+      return;
+    }
+    if (a === "ing-edit") return openIngredientEdit(Number(id));
+    if (a === "ing-save") {
+      const cur = state.ingredients.find((x) => x.id === Number(id)) || {};
+      const payload = {
+        name: $("#i_name").value.trim(),
+        category_id: $("#i_cat").value ? Number($("#i_cat").value) : null,
+        alias: cur.alias || "",
+        note: cur.note || "",
+        default_unit: $("#i_unit").value.trim() || "克",
+        purchase_spec: $("#i_spec").value.trim(),
+        channel: $("#i_ch").value.trim(),
+        gram_per_unit: parseFloat($("#i_gpu").value) || 0,
+      };
+      $$(".nut-edit-row input[data-k]").forEach((inp) => {
+        payload[inp.dataset.k + "_per100"] = parseFloat(inp.value) || 0;
+      });
+      try {
+        await api("PUT", `/api/ingredients/${id}`, payload);
+        toast("已保存");
+        closeModal();
+        await viewIngredients();
+      } catch (err) { $("#i_err").textContent = err.message; }
+      return;
+    }
     if (a === "recipe-detail") return openRecipeDetail(id);
     if (a === "recipe-new") return openRecipeForm(null);
     if (a === "recipe-edit") return openRecipeForm(id);

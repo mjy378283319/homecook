@@ -8,12 +8,12 @@ from sqlalchemy import text
 from app.covers import COVERS_DIR, ensure_dir
 from app.db import SessionLocal, init_db
 from app.routers import router
-from app.seed import ensure_default_user, seed_initial
+from app.seed import backfill_nutrition, ensure_default_user, seed_initial
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
-app = FastAPI(title="家常菜单 HomeCook", version="0.2.0")
+app = FastAPI(title="家常菜单 HomeCook", version="0.3.0")
 app.include_router(router, prefix="/api")
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -29,6 +29,7 @@ def _startup():
     db = SessionLocal()
     try:
         seed_initial(db)
+        backfill_nutrition(db)  # 老库升级后自动补每 100g 营养
         ensure_default_user(db)
     finally:
         db.close()

@@ -26,6 +26,19 @@ class IngredientBase(BaseModel):
     purchase_spec: str = ""
     channel: str = ""
     note: str = ""
+    gram_per_unit: float = 0  # 1 个 / 1 根 / 1 瓣 约多少克
+    # 每 100g 可食部营养
+    calories_per100: float = 0
+    carbohydrate_per100: float = 0
+    cholesterol_per100: float = 0
+    fat_per100: float = 0
+    fiber_per100: float = 0
+    protein_per100: float = 0
+    saturated_fat_per100: float = 0
+    sodium_per100: float = 0
+    sugar_per100: float = 0
+    trans_fat_per100: float = 0
+    unsaturated_fat_per100: float = 0
 
 
 class IngredientCreate(IngredientBase):
@@ -76,6 +89,14 @@ class RecipeOut(RecipeBase):
     id: int
     ingredients: List[dict] = []
     steps: List[dict] = []
+    nutrition: dict = {}
+
+
+class NutritionIn(BaseModel):
+    """mode=manual 时填全锅总量；mode=auto 时忽略 values。"""
+
+    mode: str = "auto"
+    values: dict = {}
 
 
 class MealPlanIn(BaseModel):

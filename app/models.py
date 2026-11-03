@@ -49,6 +49,20 @@ class Ingredient(Base):
     purchase_spec = Column(String(128), default="")  # 采购规格：500g/袋
     channel = Column(String(64), default="")  # 常去渠道：菜市场/超市/电商/社区团购
     note = Column(String(256), default="")
+    # 计数单位折算：1 个 / 1 根 / 1 瓣 / 1 块 约多少克
+    gram_per_unit = Column(Float, default=0.0)
+    # 每 100g 可食部营养（用于菜谱自动估算）
+    calories_per100 = Column(Float, default=0.0)
+    carbohydrate_per100 = Column(Float, default=0.0)
+    cholesterol_per100 = Column(Float, default=0.0)
+    fat_per100 = Column(Float, default=0.0)
+    fiber_per100 = Column(Float, default=0.0)
+    protein_per100 = Column(Float, default=0.0)
+    saturated_fat_per100 = Column(Float, default=0.0)
+    sodium_per100 = Column(Float, default=0.0)
+    sugar_per100 = Column(Float, default=0.0)
+    trans_fat_per100 = Column(Float, default=0.0)
+    unsaturated_fat_per100 = Column(Float, default=0.0)
     created_at = Column(DateTime, default=_now)
 
 
@@ -67,6 +81,19 @@ class Recipe(Base):
     source_url = Column(String(512), default="")
     source_name = Column(String(64), default="")  # 下厨房/手工录入
     cover = Column(String(512), default="")
+    # 营养：auto = 按食材估算；manual = 用手填的全锅总量
+    nutrition_mode = Column(String(8), default="auto")
+    manual_calories = Column(Float, default=0.0)
+    manual_carbohydrate = Column(Float, default=0.0)
+    manual_cholesterol = Column(Float, default=0.0)
+    manual_fat = Column(Float, default=0.0)
+    manual_fiber = Column(Float, default=0.0)
+    manual_protein = Column(Float, default=0.0)
+    manual_saturated_fat = Column(Float, default=0.0)
+    manual_sodium = Column(Float, default=0.0)
+    manual_sugar = Column(Float, default=0.0)
+    manual_trans_fat = Column(Float, default=0.0)
+    manual_unsaturated_fat = Column(Float, default=0.0)
     created_at = Column(DateTime, default=_now)
     ingredients = relationship(
         "RecipeIngredient", back_populates="recipe", cascade="all, delete-orphan"
@@ -87,6 +114,7 @@ class RecipeIngredient(Base):
     note = Column(String(256), default="")
     order_idx = Column(Integer, default=0)
     recipe = relationship("Recipe", back_populates="ingredients")
+    ingredient = relationship("Ingredient")  # 用于取每 100g 营养
 
 
 class RecipeStep(Base):

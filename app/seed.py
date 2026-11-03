@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Category, Ingredient, User
 from app.auth import hash_password
+from app.nutrition import FOODS, METRIC_KEYS
 
 
 # (大类, 图标, [(小类, 图标), ...])
@@ -36,7 +37,38 @@ SAMPLE_INGREDIENTS = [
     ("豆腐", "豆制品", "块", "400g/盒", "超市"),
     ("干木耳", "干杂", "克", "100g/袋", "超市"),
     ("小米辣", "香辛料", "个", "按两买", "菜市场"),
+    # 做营养估算的常用底料
+    ("花生油", "油盐酱醋", "毫升", "5L/桶", "超市"),
+    ("白糖", "油盐酱醋", "克", "400g/袋", "超市"),
+    ("料酒", "油盐酱醋", "毫升", "500ml/瓶", "超市"),
+    ("淀粉", "干杂", "克", "400g/袋", "超市"),
+    ("大米", "米面", "克", "10kg/袋", "超市"),
 ]
+
+
+def apply_food_data(ing: Ingredient) -> bool:
+    """按名字把内置食物成分表写进食材，返回是否发生写入。"""
+    food = FOODS.get((ing.name or "").strip())
+    if not food:
+        return False
+    for k in METRIC_KEYS:
+        setattr(ing, k + "_per100", float(food.get(k, 0) or 0))
+    if not (ing.gram_per_unit or 0):
+        ing.gram_per_unit = float(food.get("gram_per_unit", 0) or 0)
+    return True
+
+
+def backfill_nutrition(db: Session) -> int:
+    """给已有食材补营养数据（只补空的，不覆盖用户改过的值）。"""
+    changed = 0
+    for ing in db.query(Ingredient).all():
+        if (ing.calories_per100 or 0) > 0:
+            continue
+        if apply_food_data(ing):
+            changed += 1
+    if changed:
+        db.commit()
+    return changed
 
 
 def seed_initial(db: Session) -> None:
@@ -53,15 +85,15 @@ def seed_initial(db: Session) -> None:
 
     cat_by_name = {c.name: c.id for c in db.query(Category).all()}
     for name, cat, unit, spec, ch in SAMPLE_INGREDIENTS:
-        db.add(
-            Ingredient(
-                name=name,
-                category_id=cat_by_name.get(cat),
-                default_unit=unit,
-                purchase_spec=spec,
-                channel=ch,
-            )
+        ing = Ingredient(
+            name=name,
+            category_id=cat_by_name.get(cat),
+            default_unit=unit,
+            purchase_spec=spec,
+            channel=ch,
         )
+        apply_food_data(ing)
+        db.add(ing)
     db.commit()
 
 

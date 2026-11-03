@@ -11,11 +11,13 @@
 
 <img src="static/screenshots/recipes.png" width="49%" alt="菜谱列表" /> <img src="static/screenshots/recipe-detail.png" width="49%" alt="菜谱详情" />
 
-<img src="static/screenshots/recipe-edit.png" width="49%" alt="编辑菜谱与封面" /> <img src="static/screenshots/shopping-list.png" width="49%" alt="采购清单" />
+<img src="static/screenshots/nutrition-detail.png" width="49%" alt="营养（每份）" /> <img src="static/screenshots/nutrition-total.png" width="49%" alt="营养（全锅）" />
 
-<img src="static/screenshots/mealplan.png" width="49%" alt="周菜单" /> <img src="static/screenshots/ingredients.png" width="49%" alt="食材库" />
+<img src="static/screenshots/nutrition-manual.png" width="49%" alt="菜谱营养手动填写" /> <img src="static/screenshots/ingredient-nutrition.png" width="49%" alt="食材每 100g 营养" />
 
-<img src="static/screenshots/login.png" width="49%" alt="登录" />
+<img src="static/screenshots/shopping-list.png" width="49%" alt="采购清单" /> <img src="static/screenshots/mealplan.png" width="49%" alt="周菜单" />
+
+<img src="static/screenshots/ingredients.png" width="49%" alt="食材库" /> <img src="static/screenshots/login.png" width="49%" alt="登录" />
 
 ## 与 Mealie 的差异（本地化重点）
 
@@ -31,13 +33,14 @@
 
 1. **菜谱管理**：菜系/做法/难度/人份/时长/口味标签/小贴士；食材明细（本地单位）；分步做法（每步可带提示）。
 2. **封面图**：列表缩略图 + 详情大图；支持本地上传或粘贴图片链接；下厨房导入时自动抓成品图；无图时显示菜名首字占位。
-3. **食材库**：中式分类树 + 别名字典；记录默认单位、采购规格、常去渠道。
-4. **采购清单**：从勾选菜谱或周菜单一键聚合；按名称合并、按斤两/毫升换算展示；可勾选已购、填采购渠道。
-5. **周菜单**：一周早/午/晚排菜，按区间生成采购清单。
-6. **单位换算**：斤↔两↔克、升↔毫升、汤匙↔茶匙，以及定性单位（适量/少许）。
-7. **导入**：粘贴下厨房链接，尽力解析用料与步骤后进入可编辑表单。
-8. **鉴权**：独立登录页（支持 Bitwarden 自动填充），写入 httpOnly 会话 Cookie；读操作开放，写操作需登录。
-9. **深链**：支持 `#recipes` / `#shopping` / `#mealplan` 等地址直接进入对应标签页，可收藏。
+3. **营养**：11 项指标（卡路里/碳水/胆固醇/脂肪/纤维/蛋白质/饱和脂肪/钠/糖/反式脂肪/不饱和脂肪），按食材每 100g 自动估算，可切换每份/全锅，也可手动覆盖。
+4. **食材库**：中式分类树 + 别名字典；记录默认单位、采购规格、常去渠道、每 100g 营养与单件克重。
+5. **采购清单**：从勾选菜谱或周菜单一键聚合；按名称合并、按斤两/毫升换算展示；可勾选已购、填采购渠道。
+6. **周菜单**：一周早/午/晚排菜，按区间生成采购清单。
+7. **单位换算**：斤↔两↔克、升↔毫升、汤匙↔茶匙，以及定性单位（适量/少许）。
+8. **导入**：粘贴下厨房链接，尽力解析用料与步骤后进入可编辑表单。
+9. **鉴权**：独立登录页（支持 Bitwarden 自动填充），写入 httpOnly 会话 Cookie；读操作开放，写操作需登录。
+10. **深链**：支持 `#recipes` / `#shopping` / `#mealplan` 等地址直接进入对应标签页，可收藏。
 
 ## 技术栈
 
@@ -49,8 +52,8 @@
 
 - `users` 账号
 - `categories` 食材分类树（parent_id 自引用）
-- `ingredients` 食材（关联分类、别名、默认单位、采购规格、渠道）
-- `recipes` 菜谱（菜系/做法/难度/时长/口味/小贴士/来源）
+- `ingredients` 食材（关联分类、别名、默认单位、采购规格、渠道；11 项每 100g 营养 + 单件克重）
+- `recipes` 菜谱（菜系/做法/难度/时长/口味/小贴士/来源；营养口径 `nutrition_mode` + 11 项手填总量）
 - `recipe_ingredients` 菜谱食材（数量、单位、备注，可关联食材或自由文本）
 - `recipe_steps` 步骤（序号、标题、正文、提示）
 - `meal_plans` 周菜单（日期、餐别、菜谱）
@@ -97,6 +100,20 @@ docker compose up -d
 | `COVERS_DIR` | 封面图目录（默认跟随 `DB_PATH` 所在目录） | /data/covers |
 | `TZ` | 时区 | Asia/Shanghai |
 
+## 营养估算
+
+指标顺序固定（与 Mealie 一致）：**卡路里 → 碳水化合物 → 胆固醇 → 脂肪 → 纤维 → 蛋白质 → 饱和脂肪 → 钠 → 糖 → 反式脂肪 → 不饱和脂肪**。
+
+- **自动估算**（默认）：`Σ(食材用量折算克重 × 该食材每 100g 营养) ÷ 人份`；改人份后每份数值自动重算
+- **每份 / 全锅**：详情页右上角切换，全锅即整锅总量
+- **手动覆盖**：菜谱编辑页把「营养」切成「手动填写」，直接填全锅总量（如照抄包装营养表）
+- **计数单位**：`3 个鸡蛋`、`2 根葱` 依赖食材的「每个/根约 X 克」折算；体积按 1ml ≈ 1g 近似
+- **未计入提示**：`适量`、`少许` 或缺少克重的食材会列在面板下方，避免把不完整的数据当完整结果
+- **数据来源**：内置约 70 种常见食材的《中国食物成分表》参考值，可在食材库逐项修改或补录
+- **精度说明**：油、酱油密度不是 1，体积折算约有 5%~10% 误差；烹饪损耗（如焯水、油炸吸油）未建模，数值仅供日常参考
+
+老版本数据库升级时无需手工迁移：启动会自动补齐新增列，并按名称回填内置食材的营养数据（只补空值，不覆盖你改过的值）。
+
 ## 封面图
 
 - 存放位置：数据卷内的 `covers/`（容器里是 `/data/covers`），与数据库同卷，备份/迁移一并带走
@@ -112,7 +129,7 @@ tar czf homecook-backup.tgz -C /mnt/user/appdata/homecook .
 
 ## 健康检查
 
-- 容器内探测端点：`GET /healthz` → `{"status":"ok","version":"0.2.0"}`（不校验登录、只验证进程与数据库可用）
+- 容器内探测端点：`GET /healthz` → `{"status":"ok","version":"0.3.0"}`（不校验登录、只验证进程与数据库可用）
 - 镜像内置 `HEALTHCHECK`（每 30s 一次，20s 启动宽限），`docker ps` 可见 `healthy` 状态
 - compose 已显式声明相同的 healthcheck，可直接配合 `depends_on: condition: service_healthy` 使用
 

@@ -7,6 +7,7 @@ from app.auth import create_session, get_current_user, verify_password
 from app.covers import delete_cover, save_cover, save_cover_from_url
 from app.db import get_db
 from app.import_xcf import import_from_url
+from app.nutrition import METRICS, METRIC_KEYS, summarize
 from app.models import (
     Category,
     Ingredient,
@@ -25,6 +26,7 @@ from app.schemas import (
     IngredientOut,
     LoginIn,
     MealPlanIn,
+    NutritionIn,
     RecipeCreate,
     RecipeOut,
     ShoppingItemIn,
@@ -86,6 +88,7 @@ def meta_options():
         "meal_types": ["早餐", "午餐", "晚餐", "加餐"],
         "taste_tags": ["咸鲜", "麻辣", "酸辣", "酸甜", "清淡", "鲜香", "酱香", "甜口", "咸甜"],
         "channels": ["菜市场", "超市", "电商", "社区团购", "生鲜App"],
+        "nutrition": METRICS,
     }
 
 
@@ -138,6 +141,43 @@ def create_ingredient(payload: IngredientCreate, db: Session = Depends(get_db),
     return ing
 
 
+@router.put("/ingredients/{iid}", response_model=IngredientOut)
+def update_ingredient(iid: int, payload: IngredientCreate, db: Session = Depends(get_db),
+                      _: User = Depends(get_current_user)):
+    """更新食材信息，含每 100g 营养与单件克重（营养估算的数据源）。"""
+    ing = db.get(Ingredient, iid)
+    if not ing:
+        raise HTTPException(status_code=404, detail="食材不存在")
+    for k, v in payload.model_dump().items():
+        if k == "name" and v != ing.name:
+            if db.query(Ingredient).filter_by(name=v).first():
+                raise HTTPException(status_code=400, detail="同名食材已存在")
+        setattr(ing, k, v)
+    db.commit()
+    db.refresh(ing)
+    return ing
+
+
+@router.patch("/ingredients/{iid}/nutrition", response_model=IngredientOut)
+def patch_ingredient_nutrition(iid: int, payload: dict, db: Session = Depends(get_db),
+                               _: User = Depends(get_current_user)):
+    """只改营养字段，方便前端小表单提交。"""
+    ing = db.get(Ingredient, iid)
+    if not ing:
+        raise HTTPException(status_code=404, detail="食材不存在")
+    allowed = {k + "_per100" for k in METRIC_KEYS} | {"gram_per_unit"}
+    for k, v in (payload or {}).items():
+        if k not in allowed:
+            continue
+        try:
+            setattr(ing, k, max(0.0, float(v or 0)))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail=f"{k} 必须是数字")
+    db.commit()
+    db.refresh(ing)
+    return ing
+
+
 @router.delete("/ingredients/{iid}")
 def delete_ingredient(iid: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
     ing = db.get(Ingredient, iid)
@@ -173,6 +213,7 @@ def _recipe_out(r: Recipe) -> dict:
             {"id": s.id, "step_no": s.step_no, "title": s.title, "text": s.text, "tip": s.tip}
             for s in sorted(r.steps, key=lambda x: x.step_no)
         ],
+        "nutrition": summarize(r),
     }
 
 
@@ -205,6 +246,14 @@ def _base_fields():
     return list(RecipeBase.model_fields.keys())
 
 
+def _link_ingredients(db: Session, r: Recipe) -> None:
+    """用料名自动关联食材库，营养估算才能取到每 100g 数据。"""
+    names = {i.name: i.id for i in db.query(Ingredient).all()}
+    for ri in r.ingredients:
+        if not ri.ingredient_id:
+            ri.ingredient_id = names.get((ri.name or "").strip())
+
+
 @router.post("/recipes", response_model=RecipeOut)
 def create_recipe(payload: RecipeCreate, db: Session = Depends(get_db),
                   _: User = Depends(get_current_user)):
@@ -213,7 +262,32 @@ def create_recipe(payload: RecipeCreate, db: Session = Depends(get_db),
         r.ingredients.append(RecipeIngredient(**ing.model_dump()))
     for st in payload.steps:
         r.steps.append(RecipeStep(**st.model_dump()))
+    _link_ingredients(db, r)
     db.add(r)
+    db.commit()
+    db.refresh(r)
+    return _recipe_out(r)
+
+
+@router.put("/recipes/{rid}/nutrition", response_model=RecipeOut)
+def set_recipe_nutrition(rid: int, payload: NutritionIn, db: Session = Depends(get_db),
+                         _: User = Depends(get_current_user)):
+    """切换营养口径：auto 按食材估算，manual 用手填的全锅总量。"""
+    r = db.get(Recipe, rid)
+    if not r:
+        raise HTTPException(status_code=404, detail="菜谱不存在")
+    mode = (payload.mode or "auto").strip().lower()
+    if mode not in ("auto", "manual"):
+        raise HTTPException(status_code=400, detail="mode 只能是 auto 或 manual")
+    r.nutrition_mode = mode
+    if mode == "manual":
+        for k, v in (payload.values or {}).items():
+            if k not in METRIC_KEYS:
+                continue
+            try:
+                setattr(r, "manual_" + k, max(0.0, float(v or 0)))
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail=f"{k} 必须是数字")
     db.commit()
     db.refresh(r)
     return _recipe_out(r)
@@ -236,6 +310,7 @@ def update_recipe(rid: int, payload: RecipeCreate, db: Session = Depends(get_db)
         r.ingredients.append(RecipeIngredient(**ing.model_dump()))
     for st in payload.steps:
         r.steps.append(RecipeStep(**st.model_dump()))
+    _link_ingredients(db, r)
     db.commit()
     db.refresh(r)
     return _recipe_out(r)
