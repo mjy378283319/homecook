@@ -1,7 +1,8 @@
 services:
   homecook:
-    build: .
-    image: homecook:latest
+    # 直接拉取 CI 构建好的多架构镜像；本地开发可改用：
+    #   docker build -t ghcr.io/mjy378283319/homecook:latest .
+    image: ghcr.io/mjy378283319/homecook:latest
     container_name: homecook
     ports:
       - "9926:8000"

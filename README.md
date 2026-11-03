@@ -3,6 +3,12 @@
 一套面向中式家庭饮食的菜单管理应用，参照 Mealie 的思路但针对国内习惯重写：
 中式食材分类、家常菜谱结构、本地单位（斤/两/克/汤匙）与采购方式（菜市场/超市/电商/社区团购）。
 
+## 仓库与镜像
+
+- 源码仓库：https://github.com/mjy378283319/homecook
+- 容器镜像：`ghcr.io/mjy378283319/homecook:latest`（多架构 amd64 / arm64，push 后由 GitHub Actions 自动构建）
+- 与 `xcf2mealie_web` **完全独立**：HomeCook 自带下厨房导入，不依赖 Mealie。
+
 ## 与 Mealie 的差异（本地化重点）
 
 | 维度 | Mealie（国外习惯） | HomeCook（本地化） |
@@ -55,9 +61,19 @@ uvicorn app.main:app --reload --port 8000
 ## Docker 部署
 
 ```bash
-docker compose up -d --build
+docker compose up -d        # 直接从 ghcr 拉取镜像
 # 访问 http://<主机IP>:9926
 ```
+
+本地开发构建（改代码后）：
+
+```bash
+docker build -t ghcr.io/mjy378283319/homecook:latest .
+docker compose up -d
+```
+
+> ⚠️ 部署前务必修改 `WEB_PASSWORD` 与 `SECRET_KEY`，不要把默认口令暴露到公网。
+> `SECRET_KEY` 可用 `openssl rand -hex 32` 生成。
 
 环境变量：
 
@@ -72,7 +88,7 @@ docker compose up -d --build
 ## Unraid 部署
 
 1. 将 `homecook.xml` 放到 Unraid 的 `templates-user` 目录，或在 CA 中「从模板路径添加」。
-2. 映射端口 9926，映射 `/data` 到 `/mnt/user/appdata/homecook`。
+2. 模板会自动拉取 `ghcr.io/mjy378283319/homecook:latest`，映射端口 9926，映射 `/data` 到 `/mnt/user/appdata/homecook`。
 3. 修改 `WEB_PASSWORD` 与 `SECRET_KEY` 后启动。
 
 ## 导入说明

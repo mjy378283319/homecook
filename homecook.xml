@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>HomeCook</Name>
-  <Repository>mjy378283319/homecook:latest</Repository>
+  <Repository>ghcr.io/mjy378283319/homecook:latest</Repository>
   <Registry>https://github.com/mjy378283319/homecook</Registry>
   <Network>bridge</Network>
   <MyIP/>
@@ -10,7 +10,8 @@
   <Support>https://github.com/mjy378283319/homecook</Support>
   <Project>https://github.com/mjy378283319/homecook</Project>
   <WebUI>http://[IP]:[PORT:9926]</WebUI>
-  <Icon>https://raw.githubusercontent.com/mjy378283319/homecook/main/static/favicon.png</Icon>
+  <Icon>https://raw.githubusercontent.com/mjy378283319/homecook/main/static/icon.png</Icon>
+  <Description>家常菜单 HomeCook：面向中式家庭饮食的菜谱 / 食材库 / 采购清单 / 周菜单管理应用</Description>
   <Port>
     <Name>WebUI</Name>
     <ContainerPort>8000</ContainerPort>
@@ -21,18 +22,22 @@
     <Variable>
       <Value>admin</Value>
       <Name>WEB_USER</Name>
+      <Description>登录用户名</Description>
     </Variable>
     <Variable>
       <Value>changeme</Value>
       <Name>WEB_PASSWORD</Name>
+      <Description>登录密码（务必修改为强密码）</Description>
     </Variable>
     <Variable>
       <Value>please-change-to-a-random-string</Value>
       <Name>SECRET_KEY</Name>
+      <Description>会话签名密钥（务必改成随机字符串，例如 openssl rand -hex 32）</Description>
     </Variable>
     <Variable>
       <Value>Asia/Shanghai</Value>
       <Name>TZ</Name>
+      <Description>时区</Description>
     </Variable>
   </Environment>
   <Config Name="数据目录" Target="/data" Default="" Mode="" Description="SQLite 数据库持久化目录" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/homecook</Config>
