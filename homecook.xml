@@ -2,17 +2,17 @@
 <Container version="2">
   <Name>HomeCook</Name>
   <Repository>ghcr.io/mjy378283319/homecook:latest</Repository>
-  <Registry>https://github.com/mjy378283319/homecook</Registry>
+  <Registry>https://github.com/mjy378283319/homecook/pkgs/container/homecook</Registry>
   <Network>bridge</Network>
   <MyIP/>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/mjy378283319/homecook</Support>
+  <Support>https://github.com/mjy378283319/homecook/issues</Support>
   <Project>https://github.com/mjy378283319/homecook</Project>
   <WebUI>http://[IP]:[PORT:9926]</WebUI>
   <Icon>https://raw.githubusercontent.com/mjy378283319/homecook/main/static/icon.png</Icon>
   <Description>家常菜单 HomeCook：面向中式家庭饮食的菜谱 / 食材库 / 采购清单 / 周菜单管理应用</Description>
-  <Category>Tools: Utilities</Category>
+  <Category>Tools: Utilities:</Category>
   <Beta>false</Beta>
   <Overview>面向中式家庭饮食的菜单管理应用（Mealie 的本地化替代）。
 · 菜谱：菜系 / 做法 / 难度 / 人份 / 口味标签 / 小贴士，食材按斤两克计量
@@ -25,36 +25,13 @@
 默认账号 admin / homecook，首次部署请修改密码与会话密钥。</Overview>
   <Screenshot>https://raw.githubusercontent.com/mjy378283319/homecook/main/static/screenshots/recipes.png</Screenshot>
   <Screenshot>https://raw.githubusercontent.com/mjy378283319/homecook/main/static/screenshots/recipe-detail.png</Screenshot>
-  <Screenshot>https://raw.githubusercontent.com/mjy378283319/homecook/main/static/screenshots/recipe-edit.png</Screenshot>
+  <Screenshot>https://raw.githubusercontent.com/mjy378283319/homecook/main/static/screenshots/nutrition-detail.png</Screenshot>
   <Screenshot>https://raw.githubusercontent.com/mjy378283319/homecook/main/static/screenshots/shopping-list.png</Screenshot>
   <Screenshot>https://raw.githubusercontent.com/mjy378283319/homecook/main/static/screenshots/mealplan.png</Screenshot>
-  <Port>
-    <Name>WebUI</Name>
-    <ContainerPort>8000</ContainerPort>
-    <HostPort>9926</HostPort>
-    <Protocol>tcp</Protocol>
-  </Port>
-  <Environment>
-    <Variable>
-      <Value>admin</Value>
-      <Name>WEB_USER</Name>
-      <Description>登录用户名</Description>
-    </Variable>
-    <Variable>
-      <Value>changeme</Value>
-      <Name>WEB_PASSWORD</Name>
-      <Description>登录密码（务必修改为强密码）</Description>
-    </Variable>
-    <Variable>
-      <Value>please-change-to-a-random-string</Value>
-      <Name>SECRET_KEY</Name>
-      <Description>会话签名密钥（务必改成随机字符串，例如 openssl rand -hex 32）</Description>
-    </Variable>
-    <Variable>
-      <Value>Asia/Shanghai</Value>
-      <Name>TZ</Name>
-      <Description>时区</Description>
-    </Variable>
-  </Environment>
-  <Config Name="数据目录" Target="/data" Default="" Mode="" Description="SQLite 数据库持久化目录" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/homecook</Config>
+  <Config Name="WebUI 端口" Target="8000" Default="9926" Mode="tcp" Description="浏览器访问端口，容器内部固定 8000" Type="Port" Display="always" Required="true" Mask="false">9926</Config>
+  <Config Name="数据目录" Target="/data" Default="/mnt/user/appdata/homecook" Mode="rw" Description="SQLite 数据库与封面图持久化目录，务必备份" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/homecook</Config>
+  <Config Name="登录用户名" Target="WEB_USER" Default="admin" Mode="" Description="Web 登录账号" Type="Variable" Display="always" Required="true" Mask="false">admin</Config>
+  <Config Name="登录密码" Target="WEB_PASSWORD" Default="changeme" Mode="" Description="Web 登录密码，务必改成强密码" Type="Variable" Display="always" Required="true" Mask="true">changeme</Config>
+  <Config Name="会话密钥" Target="SECRET_KEY" Default="" Mode="" Description="Cookie 签名密钥，务必改成随机串：openssl rand -hex 32" Type="Variable" Display="always" Required="true" Mask="true">please-change-to-a-random-string</Config>
+  <Config Name="时区" Target="TZ" Default="Asia/Shanghai" Mode="" Description="容器时区" Type="Variable" Display="always" Required="false" Mask="false">Asia/Shanghai</Config>
 </Container>
