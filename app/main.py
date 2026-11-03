@@ -5,6 +5,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
+from app.covers import COVERS_DIR, ensure_dir
 from app.db import SessionLocal, init_db
 from app.routers import router
 from app.seed import ensure_default_user, seed_initial
@@ -12,10 +13,14 @@ from app.seed import ensure_default_user, seed_initial
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
-app = FastAPI(title="家常菜单 HomeCook", version="0.1.0")
+app = FastAPI(title="家常菜单 HomeCook", version="0.2.0")
 app.include_router(router, prefix="/api")
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+# 菜谱封面：与数据库同卷（/data/covers），文件名随机、只读暴露
+ensure_dir()
+app.mount("/covers", StaticFiles(directory=COVERS_DIR), name="covers")
 
 
 @app.on_event("startup")

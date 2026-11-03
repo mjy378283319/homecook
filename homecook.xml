@@ -16,6 +16,7 @@
   <Beta>false</Beta>
   <Overview>面向中式家庭饮食的菜单管理应用（Mealie 的本地化替代）。
 · 菜谱：菜系 / 做法 / 难度 / 人份 / 口味标签 / 小贴士，食材按斤两克计量
+· 封面图：列表缩略图 + 详情大图，支持上传或粘链接，下厨房导入自动抓图
 · 食材库：中式分类树，记录采购规格与常去渠道（菜市场 / 超市 / 电商）
 · 采购清单：从勾选菜谱或周菜单一键聚合，自动合并同种食材并按斤两换算
 · 周菜单：一周早 / 午 / 晚排菜，按区间生成采购清单
@@ -23,6 +24,7 @@
 默认账号 admin / homecook，首次部署请修改密码与会话密钥。</Overview>
   <Screenshot>https://raw.githubusercontent.com/mjy378283319/homecook/main/static/screenshots/recipes.png</Screenshot>
   <Screenshot>https://raw.githubusercontent.com/mjy378283319/homecook/main/static/screenshots/recipe-detail.png</Screenshot>
+  <Screenshot>https://raw.githubusercontent.com/mjy378283319/homecook/main/static/screenshots/recipe-edit.png</Screenshot>
   <Screenshot>https://raw.githubusercontent.com/mjy378283319/homecook/main/static/screenshots/shopping-list.png</Screenshot>
   <Screenshot>https://raw.githubusercontent.com/mjy378283319/homecook/main/static/screenshots/mealplan.png</Screenshot>
   <Port>

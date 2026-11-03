@@ -1,9 +1,10 @@
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile
 from sqlalchemy.orm import Session
 
 from app.auth import create_session, get_current_user, verify_password
+from app.covers import delete_cover, save_cover, save_cover_from_url
 from app.db import get_db
 from app.import_xcf import import_from_url
 from app.models import (
@@ -245,8 +246,42 @@ def delete_recipe(rid: int, db: Session = Depends(get_db), _: User = Depends(get
     r = db.get(Recipe, rid)
     if not r:
         raise HTTPException(status_code=404, detail="菜谱不存在")
+    cover = r.cover
     db.delete(r)
     db.commit()
+    delete_cover(cover)
+    return {"ok": True}
+
+
+@router.post("/recipes/{rid}/cover")
+async def upload_recipe_cover(rid: int, file: UploadFile = File(...),
+                              db: Session = Depends(get_db),
+                              _: User = Depends(get_current_user)):
+    r = db.get(Recipe, rid)
+    if not r:
+        raise HTTPException(status_code=404, detail="菜谱不存在")
+    raw = await file.read()
+    try:
+        cover = save_cover(raw)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    old = r.cover
+    r.cover = cover
+    db.commit()
+    delete_cover(old)
+    return {"cover": cover}
+
+
+@router.delete("/recipes/{rid}/cover")
+def remove_recipe_cover(rid: int, db: Session = Depends(get_db),
+                        _: User = Depends(get_current_user)):
+    r = db.get(Recipe, rid)
+    if not r:
+        raise HTTPException(status_code=404, detail="菜谱不存在")
+    old = r.cover
+    r.cover = ""
+    db.commit()
+    delete_cover(old)
     return {"ok": True}
 
 
@@ -437,4 +472,12 @@ def import_xcf(payload: dict, db: Session = Depends(get_db),
         raise HTTPException(status_code=502, detail=f"抓取失败：{e}")
     if not data["title"] and not data["ingredients"] and not data["steps"]:
         raise HTTPException(status_code=422, detail="未能解析出内容，请手动录入或粘贴文本")
+    # 封面图尽力抓取，失败不影响导入
+    cover_url = data.pop("cover_url", "")
+    data["cover"] = ""
+    if cover_url:
+        try:
+            data["cover"] = save_cover_from_url(cover_url, referer="https://www.xiachufang.com/")
+        except Exception:  # noqa: BLE001
+            data["cover"] = ""
     return data

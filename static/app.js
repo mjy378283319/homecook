@@ -118,17 +118,44 @@ async function loadRecipes() { state.recipes = await api("GET", "/api/recipes");
 function recipeCard(r) {
   const checked = state.selected.has(r.id) ? "checked" : "";
   return `<div class="recipe">
-    <div style="flex:1" data-action="recipe-detail" data-id="${r.id}">
-      <div><b>${esc(r.title)}</b></div>
-      <div class="meta">
-        <span class="tag">${esc(r.cuisine)}</span>
-        <span class="tag">${esc(r.method)}</span>
-        <span class="tag">${esc(r.difficulty)}</span>
-        约 ${r.prep_time + r.cook_time} 分钟 · ${r.servings} 人份
+    <div class="recipe-main" data-action="recipe-detail" data-id="${r.id}">
+      ${coverThumb(r)}
+      <div style="min-width:0">
+        <div><b>${esc(r.title)}</b></div>
+        <div class="meta">
+          <span class="tag">${esc(r.cuisine)}</span>
+          <span class="tag">${esc(r.method)}</span>
+          <span class="tag">${esc(r.difficulty)}</span>
+          约 ${r.prep_time + r.cook_time} 分钟 · ${r.servings} 人份
+        </div>
       </div>
     </div>
     <input type="checkbox" class="check" ${checked} data-action="recipe-select" data-id="${r.id}" title="加入采购" />
   </div>`;
+}
+
+function coverThumb(r) {
+  return r.cover
+    ? `<img class="thumb" src="${esc(r.cover)}" alt="" loading="lazy" />`
+    : `<div class="thumb ph">${esc((r.title || "菜").slice(0, 1))}</div>`;
+}
+
+function renderCoverPreview(src) {
+  const box = $("#coverPreview");
+  if (!box) return;
+  box.innerHTML = src ? `<img class="cover-preview" src="${esc(src)}" alt="" />` : '<div class="cover-preview">无封面</div>';
+}
+
+async function uploadCover(rid, file) {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch(`/api/recipes/${rid}/cover`, {
+    method: "POST", body: fd, credentials: "same-origin",
+  });
+  let data = {};
+  try { data = await res.json(); } catch (e) {}
+  if (!res.ok) throw new Error(data.detail || "上传失败");
+  return data.cover;
 }
 
 async function viewRecipes() {
@@ -171,6 +198,7 @@ async function openRecipeDetail(id) {
   const ings = r.ingredients.map((i) => `<tr><td>${esc(i.name)}</td><td>${pretty(i.quantity, i.unit)}</td><td class="muted">${esc(i.note || "")}</td></tr>`).join("");
   const steps = r.steps.map((s, idx) => `<div class="step"><b>第${idx + 1}步 ${esc(s.title || "")}</b><div>${esc(s.text)}</div>${s.tip ? `<div class="tip">💡 ${esc(s.tip)}</div>` : ""}</div>`).join("");
   $("#modalContent").innerHTML = `
+    ${r.cover ? `<img class="cover-hero" src="${esc(r.cover)}" alt="${esc(r.title)}" />` : ""}
     <h3>${esc(r.title)}</h3>
     <div class="meta" style="margin-bottom:8px">
       <span class="tag">${esc(r.cuisine)}</span><span class="tag">${esc(r.method)}</span><span class="tag">${esc(r.difficulty)}</span>
@@ -233,6 +261,19 @@ async function openRecipeForm(id, prefill) {
       </div>
     </div>
     <hr>
+    <h4>封面图</h4>
+    <div class="cover-edit">
+      <div id="coverPreview"></div>
+      <div class="grid" style="flex:1">
+        <input type="file" id="f_cover_file" accept="image/*" />
+        <div class="row">
+          <input id="f_cover" placeholder="或粘贴图片链接（http/https）" value="${esc(r.cover || "")}" style="flex:1" />
+          <button class="btn ghost sm" type="button" data-action="cover-clear">移除</button>
+        </div>
+        <span class="muted">支持 JPG/PNG/WebP，自动压缩到 1280px 内</span>
+      </div>
+    </div>
+    <hr>
     <h4>食材</h4>
     <div id="ingList">${r.ingredients.map((i, n) => ingRowHtml(i, n)).join("")}</div>
     <button class="btn ghost sm" data-action="ing-row-add">+ 添加食材</button>
@@ -246,6 +287,16 @@ async function openRecipeForm(id, prefill) {
     </div>`;
   $("#ingList").addEventListener("click", (e) => {
     if (e.target.dataset.action === "ing-row-del") e.target.closest(".ing-row").remove();
+  });
+  state._pendingCover = null;
+  renderCoverPreview(r.cover || "");
+  $("#f_cover_file").addEventListener("change", (e) => {
+    const f = e.target.files && e.target.files[0];
+    state._pendingCover = f || null;
+    if (f) renderCoverPreview(URL.createObjectURL(f));
+  });
+  $("#f_cover").addEventListener("input", (e) => {
+    if (!state._pendingCover) renderCoverPreview(e.target.value.trim());
   });
   showModal();
 }
@@ -272,6 +323,7 @@ async function saveRecipe(id, btn) {
     tips: $("#f_tips").value.trim(),
     source_name: $("#f_src_name").value.trim(),
     source_url: $("#f_src_url").value.trim(),
+    cover: $("#f_cover") ? $("#f_cover").value.trim() : "",
     ingredients: ings,
     steps: stepsText.map((t, i) => ({ step_no: i + 1, text: t, title: "", tip: "" })),
   };
@@ -281,8 +333,17 @@ async function saveRecipe(id, btn) {
   state.ingredients.forEach((i) => (nameToId[i.name] = i.id));
   payload.ingredients.forEach((i) => { if (nameToId[i.name]) i.ingredient_id = nameToId[i.name]; });
   try {
-    if (id) await api("PUT", "/api/recipes/" + id, payload);
-    else await api("POST", "/api/recipes", payload);
+    let saved;
+    if (id) saved = await api("PUT", "/api/recipes/" + id, payload);
+    else saved = await api("POST", "/api/recipes", payload);
+    if (state._pendingCover && saved && saved.id) {
+      try {
+        await uploadCover(saved.id, state._pendingCover);
+        state._pendingCover = null;
+      } catch (err) {
+        toast("菜谱已保存，但封面上传失败：" + err.message);
+      }
+    }
     toast("已保存");
     closeModal();
     await refreshRecipeList();
@@ -480,6 +541,13 @@ document.addEventListener("click", async (e) => {
     if (a === "recipe-select") { if (t.checked) state.selected.add(Number(id)); else state.selected.delete(Number(id)); const b = $('[data-action="gen-shopping-selected"]'); if (b) b.textContent = `生成采购（选中 ${state.selected.size}）`; return; }
     if (a === "recipe-delete") { if (!confirm("确认删除该菜谱？")) return; await api("DELETE", "/api/recipes/" + id); toast("已删除"); closeModal(); await refreshRecipeList(); return; }
     if (a === "recipe-add-shopping") { state.selected.add(Number(id)); toast("已加入采购选择，去采购清单页生成"); return; }
+    if (a === "cover-clear") {
+      state._pendingCover = null;
+      if ($("#f_cover")) $("#f_cover").value = "";
+      if ($("#f_cover_file")) $("#f_cover_file").value = "";
+      renderCoverPreview("");
+      return;
+    }
     if (a === "ing-row-add") { const n = $$("#ingList .ing-row").length; $("#ingList").insertAdjacentHTML("beforeend", ingRowHtml(null, n)); return; }
     if (a === "ing-add") {
       const name = $("#n_name").value.trim(); if (!name) { $("#n_err").textContent = "名称必填"; return; }

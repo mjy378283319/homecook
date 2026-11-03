@@ -11,9 +11,11 @@
 
 <img src="static/screenshots/recipes.png" width="49%" alt="菜谱列表" /> <img src="static/screenshots/recipe-detail.png" width="49%" alt="菜谱详情" />
 
-<img src="static/screenshots/shopping-list.png" width="49%" alt="采购清单" /> <img src="static/screenshots/mealplan.png" width="49%" alt="周菜单" />
+<img src="static/screenshots/recipe-edit.png" width="49%" alt="编辑菜谱与封面" /> <img src="static/screenshots/shopping-list.png" width="49%" alt="采购清单" />
 
-<img src="static/screenshots/ingredients.png" width="49%" alt="食材库" /> <img src="static/screenshots/login.png" width="49%" alt="登录" />
+<img src="static/screenshots/mealplan.png" width="49%" alt="周菜单" /> <img src="static/screenshots/ingredients.png" width="49%" alt="食材库" />
+
+<img src="static/screenshots/login.png" width="49%" alt="登录" />
 
 ## 与 Mealie 的差异（本地化重点）
 
@@ -28,13 +30,14 @@
 ## 功能模块
 
 1. **菜谱管理**：菜系/做法/难度/人份/时长/口味标签/小贴士；食材明细（本地单位）；分步做法（每步可带提示）。
-2. **食材库**：中式分类树 + 别名字典；记录默认单位、采购规格、常去渠道。
-3. **采购清单**：从勾选菜谱或周菜单一键聚合；按名称合并、按斤两/毫升换算展示；可勾选已购、填采购渠道。
-4. **周菜单**：一周早/午/晚排菜，按区间生成采购清单。
-5. **单位换算**：斤↔两↔克、升↔毫升、汤匙↔茶匙，以及定性单位（适量/少许）。
-6. **导入**：粘贴下厨房链接，尽力解析用料与步骤后进入可编辑表单。
-7. **鉴权**：独立登录页（支持 Bitwarden 自动填充），写入 httpOnly 会话 Cookie；读操作开放，写操作需登录。
-8. **深链**：支持 `#recipes` / `#shopping` / `#mealplan` 等地址直接进入对应标签页，可收藏。
+2. **封面图**：列表缩略图 + 详情大图；支持本地上传或粘贴图片链接；下厨房导入时自动抓成品图；无图时显示菜名首字占位。
+3. **食材库**：中式分类树 + 别名字典；记录默认单位、采购规格、常去渠道。
+4. **采购清单**：从勾选菜谱或周菜单一键聚合；按名称合并、按斤两/毫升换算展示；可勾选已购、填采购渠道。
+5. **周菜单**：一周早/午/晚排菜，按区间生成采购清单。
+6. **单位换算**：斤↔两↔克、升↔毫升、汤匙↔茶匙，以及定性单位（适量/少许）。
+7. **导入**：粘贴下厨房链接，尽力解析用料与步骤后进入可编辑表单。
+8. **鉴权**：独立登录页（支持 Bitwarden 自动填充），写入 httpOnly 会话 Cookie；读操作开放，写操作需登录。
+9. **深链**：支持 `#recipes` / `#shopping` / `#mealplan` 等地址直接进入对应标签页，可收藏。
 
 ## 技术栈
 
@@ -91,11 +94,25 @@ docker compose up -d
 | `WEB_PASSWORD` | 登录密码 | homecook |
 | `SECRET_KEY` | 会话签名密钥（务必修改） | 开发占位值 |
 | `DB_PATH` | SQLite 路径（容器内） | /data/homecook.db |
+| `COVERS_DIR` | 封面图目录（默认跟随 `DB_PATH` 所在目录） | /data/covers |
 | `TZ` | 时区 | Asia/Shanghai |
+
+## 封面图
+
+- 存放位置：数据卷内的 `covers/`（容器里是 `/data/covers`），与数据库同卷，备份/迁移一并带走
+- 上传：菜谱编辑页选本地图片，或直接粘贴图片链接（http/https）
+- 处理：装 Pillow 时自动转成最长边 1280 的 JPEG（质量 85）；单张上限 12MB，仅接受 JPG / PNG / WebP / GIF
+- 导入：从下厨房导入时尝试抓取成品图（og:image 优先），下载失败不影响导入，可事后手动补
+- 访问：图片以随机文件名放在 `/covers/<32位hex>.jpg`，只读暴露，不列目录
+
+```bash
+# 备份时把数据库和封面一起打包
+tar czf homecook-backup.tgz -C /mnt/user/appdata/homecook .
+```
 
 ## 健康检查
 
-- 容器内探测端点：`GET /healthz` → `{"status":"ok","version":"0.1.0"}`（不校验登录、只验证进程与数据库可用）
+- 容器内探测端点：`GET /healthz` → `{"status":"ok","version":"0.2.0"}`（不校验登录、只验证进程与数据库可用）
 - 镜像内置 `HEALTHCHECK`（每 30s 一次，20s 启动宽限），`docker ps` 可见 `healthy` 状态
 - compose 已显式声明相同的 healthcheck，可直接配合 `depends_on: condition: service_healthy` 使用
 

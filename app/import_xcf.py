@@ -5,6 +5,7 @@
 """
 
 import re
+from urllib.parse import urljoin
 
 import requests
 
@@ -118,9 +119,28 @@ def parse(html: str) -> dict:
     return {"title": title, "ingredients": ingredients, "steps": steps}
 
 
+def extract_cover(html: str, page_url: str = "") -> str:
+    """从页面提取成品图（og:image 优先，其次 JSON-LD / 站内图片域名）。"""
+    patterns = [
+        r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',
+        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
+        r'"image"\s*:\s*"([^"]+?\.(?:jpg|jpeg|png|webp))"',
+        r'(https?://i\d*\.xiachufang\.com/[^"\'\s<>]+\.(?:jpg|jpeg|png|webp))',
+    ]
+    for pat in patterns:
+        m = re.search(pat, html, flags=re.I)
+        if m:
+            url = m.group(1).strip()
+            if url.startswith("//"):
+                url = "https:" + url
+            return urljoin(page_url or "https://www.xiachufang.com/", url)
+    return ""
+
+
 def import_from_url(url: str) -> dict:
     html = _fetch(url)
     data = parse(html)
     data["source_url"] = url
     data["source_name"] = "下厨房"
+    data["cover_url"] = extract_cover(html, url)
     return data
